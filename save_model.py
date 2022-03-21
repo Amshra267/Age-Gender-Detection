@@ -47,7 +47,7 @@ def save_tf():
     pred = tf.concat([boxes, pred_conf], axis=-1)
   model = tf.keras.Model(input_layer, pred)
   utils.load_weights(model, FLAGS.weights, FLAGS.model, FLAGS.tiny)
-  model.summary()
+  # model.summary()
   model.save(FLAGS.output)
 
 def main(_argv):
