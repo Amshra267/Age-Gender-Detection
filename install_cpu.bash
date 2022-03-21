@@ -17,5 +17,4 @@ wget https://github.com/Amshra267/BOSCH_A-G_INTERIIT/releases/download/v1.0.0/ma
 
 ## converting darknet weights to tensorflow model
 python3 save_model.py --model yolov4
-pip3 install onnx
-pip3 installl onnx_tf
+pip3 install matplotlib
