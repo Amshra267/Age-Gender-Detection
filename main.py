@@ -38,7 +38,7 @@ from onnx_tf.backend import prepare
 from tensorflow import keras
 import tensorflow_hub as hub
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ["TFHUB_DOWNLOAD_PROGRESS"] = "True"
 
 # flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
@@ -48,85 +48,86 @@ flags.DEFINE_integer('size', 416, 'resize images to')
 flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
 flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
 flags.DEFINE_string('video', 'data/video/test_n.mp4', 'path to input video or set to 0 for webcam')
-flags.DEFINE_string('output', None, 'path to output video')
+flags.DEFINE_string('output', "outputs/video_results/test1.avi", 'path to output video')
 flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
 flags.DEFINE_float('iou', 0.45, 'iou threshold')
 flags.DEFINE_float('score', 0.50, 'score threshold')
+flags.DEFINE_float('show', False, 'to show output')
 
 ## Loading models
 print("Started Initial Configurations --------------")
 SAVED_MODEL_PATH = "https://tfhub.dev/captain-pool/esrgan-tf2/1"
-model_esrgan = hub.load(SAVED_MODEL_PATH) ##ESRGAN MODEL
+model_esrgan = hub.load(SAVED_MODEL_PATH)  ##ESRGAN MODEL
 model_unet = onnx.load('model_data/unet.onnx')  # segmentation model
 gender_model = keras.models.load_model("model_data/gender.h5")  # gender model path
 age_model = keras.models.load_model("model_data/age.h5")  # age model path
 
 print("Initial configuration finished --------------------")
 
-def preprocess_image(image):
-    """ Loads image from path and preprocesses to make it model ready
+
+def preprocess_image(image_batch):
+    """ Loads images as batches and preprocesses to make it model ready
       Args:
-        image_path: Path to the image file
+        image_batch: Batches of images
   """
-    # If PNG, remove the alpha channel. The model only supports
-    # images with 3 color channels.
-    hr_image = tf.convert_to_tensor(image, dtype=tf.float32)
-    if hr_image.shape[-1] == 4:
-        hr_image = hr_image[..., :-1]
-    hr_size = (tf.convert_to_tensor(hr_image.shape[:-1]) // 4) * 4
-    hr_image = tf.image.crop_to_bounding_box(hr_image, 0, 0, hr_size[0], hr_size[1])
-    hr_image = tf.cast(hr_image, tf.float32)
-    return tf.expand_dims(hr_image, 0)
+    shr_image = tf.convert_to_tensor(image_batch, dtype=tf.float32)
+    shr_size = (tf.convert_to_tensor(shr_image.shape[1:-1]) // 4) * 4
+    shr_image = tf.image.crop_to_bounding_box(shr_image, 0, 0, shr_size[0], shr_size[1])
+    shr_image = tf.cast(shr_image, tf.float32)
+    return shr_image
+
+
+def resize_func(img):
+    img = tf.image.resize(
+        img, (128, 128), method=tf.image.ResizeMethod.AREA, preserve_aspect_ratio=False,
+        antialias=False, name=None
+    ) / 255.0
+    img = np.transpose(img, (2, 0, 1))
+    return img
+
+outputs_dict = {}
 
 def age_gender_pred(images_dict):
-    file = open("outputs/labels.txt", "a")
+    file = open("outputs/labels.txt", "w")
     tf_rep = prepare(model_unet)
-    device = 'cpu'  # depending on usage
     for id in images_dict:
         id_images = images_dict[id]
         print(f"Len for id {id} = ", len(id_images))
-        if len(id_images)==10:
+        if len(id_images) == 4:
             paths = f"outputs/persons/person-{id}"
             if not os.path.exists(paths):
                 os.makedirs(paths)
-            lavg = []
-            for i in range(10):  # len(ti)):
-                lr_image = preprocess_image(id_images[i]) # Change path or image accordingly
-                hr_image = model_esrgan(lr_image)
-                hr_image = tf.squeeze(hr_image)
-                img = np.array(hr_image, dtype='float32')
-                img = cv2.resize(img, (128, 128)) / 255.0
-                img = cv2.merge((cv2.split(img)[2], cv2.split(img)[1], cv2.split(img)[0]))
-                img = np.transpose(img, (2, 0, 1))
-                img = img[None, ...]
-                op = tf_rep.run(np.asarray(img, dtype=np.float32))
-                res = op._0
-                res[res > 0.0] = 1
-                res[res <= 0.0] = 0
-                lavg.append(res)
-            mean = np.zeros(list(lavg[0].shape), dtype=np.float32)
-            ind = 0
-            for i in range(len(lavg)):
-                img = np.array(lavg[i], dtype=np.float32)
-                mean = np.add(mean, img)
-                ind = ind + 1
-            mean = mean / ind
-            print(mean.shape)
-            plt.imshow(mean[0, 0, :, :], cmap='gray')
-            mean = np.moveaxis(mean, -1, 1)
-            mean = np.moveaxis(mean, -1, 2)
-            print(mean.shape)
+            lr_image = preprocess_image(id_images)  # Change path or image accordingly
+            hr_image = model_esrgan(lr_image)
+            img_batch = np.array(hr_image, dtype='float32')
+            # print(img_batch[0, :, :, :].astype("uint8"))
+            # print(img_batch[0, :, :, :].min(),  img_batch[0, :, :, :].max())
+            # cv2.imshow('super resolved image', img_batch[0, :, :, :].astype("uint8"))
+            # cv2.waitKey(1)
+            encoded_images = tf.map_fn(resize_func, img_batch)
+            op = tf_rep.run(np.asarray(encoded_images, dtype=np.float32))
+            res = op._0
+            res[res > 0.0] = 1
+            res[res <= 0.0] = 0
+            mean = np.mean(res, axis=0)
+            mean1 = mean.copy()
+            mean1 = np.moveaxis(mean1, -1, 0)
+            mean1 = np.moveaxis(mean1, -1, 1)
+            assert mean1.shape[0] == 128
+            # plt.imshow(mean1.astype("uint8"))
+            assert mean.shape[0] == 1
             ans_gender = gender_model.predict(mean)
-            if ans_gender[0][0] <= 0.5:
-                print("Male")
+            if ans_gender[0][0] >= 0.5:
+                # print("Male")
                 gd = "Male"
             else:
-                print("Female")
+                # print("Female")
                 gd = "Female"
             ans_age = age_model.predict(mean)
-            print('Age is: {}'.format(int(ans_age[0][0])))
+            # print('Age is: {}'.format(int(ans_age[0][0])))
             timing = str(time.time()).split(".")[0]
             cv2.imwrite(paths + f"/{timing}.jpg", np.array(id_images[0]).astype(np.uint8))
+            # if id not in outputs_dict:
             file.write(f"Person - {id}, Gender - {gd}, Age - {int(ans_age[0][0])}\n")
             images_dict[id].pop(0)
     file.close()
@@ -273,14 +274,14 @@ def main(_argv):
         tracker.update(detections)
 
         disp = deepcopy(frame)
-        
+
         # update tracks
         for track in tracker.tracks:
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue
             bbox = track.to_tlbr()
             class_name = track.get_class()
-            
+
             # Tracking midpoints
             midpoint = track.tlbr_midpoint(bbox)
 
@@ -290,8 +291,8 @@ def main(_argv):
 
             memory[track.track_id].append(midpoint)
             previous_midpoint = memory[track.track_id][0]
-            
-            #--------------- cropping image ---------
+
+            # --------------- cropping image ---------
             xmin, ymin, xmax, ymax = bbox
             cropped_img = frame[int(ymin):int(ymax), int(xmin):int(xmax)]
             cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
@@ -301,30 +302,30 @@ def main(_argv):
             else:
                 cropped_img = cv2.resize(cropped_img, (60, 120), cv2.INTER_LINEAR)
             cropped_images[track.track_id].append(cropped_img)
-            
+
             # draw bbox on screen
             color = colors[int(track.track_id) % len(colors)]
             color = [i * 255 for i in color]
-            cv2.imshow(f"tracked - {track.track_id}", frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])])
+            # cv2.imshow(f"tracked - {track.track_id}", frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])])
             cv2.rectangle(disp, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
             cv2.line(disp, midpoint, previous_midpoint, (0, 255, 0), 2)
             # cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(
             # track.track_id)))*17, int(bbox[1])), color, -1)
             cv2.putText(disp, class_name + "-" + str(track.track_id), (int(bbox[0]), int(bbox[1] - 10)), 0, 0.75,
                         (255, 255, 255), 2)
-            cv2.waitKey(1)
-        age_gender_pred(cropped_images) # result output
+        age_gender_pred(cropped_images)  # result output
         # calculate frames per second of entire model
         fps = 1.0 / (time.time() - start_time)
         print("FPS: %.2f" % fps)
         result = np.asarray(disp)
         result = cv2.cvtColor(disp, cv2.COLOR_RGB2BGR)
+        
+        if FLAGS.show:
+            cv2.imshow("Output Video", result)
 
-        cv2.imshow("Output Video", result)
-
-        # if output flag is set, save video file
-        # if FLAGS.output:
-        #     out.write(result)
+    # if output flag is set, save video file
+        if FLAGS.output:
+            out.write(result)
         if cv2.waitKey(1) & 0xff == ord('q'): break
     cv2.destroyAllWindows()
 

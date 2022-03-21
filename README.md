@@ -50,9 +50,11 @@ Above file have some arguments:-
     
     --show  = True (for showing our output), default = false  
 
+    --output = <path_of_output_saved_video_result>
+
 ## DATASET USED
 
- - We trained Age and Gender from a Gait Rcognition Dataset **TUM-GAID DATASET** which we got from a CS Department Professor from our Institute [Dr. Pratik Chattopadhyay](https://www.iitbhu.ac.in/dept/cse/people/pratikcse). We Also took conset from them for using their dataset in our training. PDF Attached here - [].
+ - We trained Age and Gender from a Gait Rcognition Dataset **TUM-GAID DATASET** which we got from a CS Department Professor from our Institute [Dr. Pratik Chattopadhyay](https://www.iitbhu.ac.in/dept/cse/people/pratikcse). We Also took conset from them for using their dataset in our training. PDF Attached here - [data/Authorization.pdf].
  - Trained UNet on Open Source data - [OCHuman Dataset](https://cg.cs.tsinghua.edu.cn/dataset/form.html?dataset=ochuman)
  - Other models and datasets are available open source like coco for object detection. Mars dataset.
 
