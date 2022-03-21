@@ -28,4 +28,4 @@ python save_model.py --model yolov4
 mkdir model_data
 
 ## making outputs folder
-mkdir outputs
+mkdir -p outputs/video_results

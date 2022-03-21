@@ -29,4 +29,4 @@ mkdir model_data
 
 
 ## making outputs folder
-mkdir outputs
+mkdir -p outputs/video_results

@@ -91,7 +91,7 @@ outputs_show = {}
 
 def age_gender_pred(images_dict):
     global outputs_show
-    file = open("outputs/labels.txt", "wb")
+    file = open("outputs/labels.txt", "a")
     tf_rep = prepare(model_unet)
     for id in images_dict:
         id_images = images_dict[id]
@@ -143,7 +143,6 @@ def age_gender_pred(images_dict):
         # print(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
         file.write(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
     file.close()
-    
 
 
 def main(_argv):
