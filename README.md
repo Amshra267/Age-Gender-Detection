@@ -51,6 +51,12 @@ Above file have some arguments:-
     --show  = 1 (for showing our output), default = 0  
 
     --output = <path_of_output_saved_video_result>
+    
+## OUTPUT FORMAT
+
+We are creating three folders inside the outputs folder corresponding to the passed video's as an input result, persons in their cropped form and labels file having their demographic details. 
+
+The output inside the labels.txt is in the format as follows;  Person Id : Gender , Age Range , Age
 
 ## DATASET USED
 
