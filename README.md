@@ -48,7 +48,7 @@ Above file have some arguments:-
                  or <camera id_no in case of real time image feed
                 example = 0 (for webcam ), 1 (for external camera) >
     
-    --show  = True (for showing our output), default = false  
+    --show  = 1 (for showing our output), default = 0  
 
     --output = <path_of_output_saved_video_result>
 

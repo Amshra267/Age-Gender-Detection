@@ -5,7 +5,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import time
 import tensorflow as tf
-
+import statistics
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 if len(physical_devices) > 0:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -52,7 +52,7 @@ flags.DEFINE_string('output', "outputs/video_results/test1.avi", 'path to output
 flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
 flags.DEFINE_float('iou', 0.45, 'iou threshold')
 flags.DEFINE_float('score', 0.50, 'score threshold')
-flags.DEFINE_float('show', False, 'to show output')
+flags.DEFINE_float('show', 0, 'to show output')
 
 ## Loading models
 print("Started Initial Configurations --------------")
@@ -85,14 +85,17 @@ def resize_func(img):
     img = np.transpose(img, (2, 0, 1))
     return img
 
-outputs_dict = {}
+outputs_ids_age = defaultdict(list)
+outputs_ids_gd = defaultdict(list)
+outputs_show = {}
 
 def age_gender_pred(images_dict):
-    file = open("outputs/labels.txt", "w")
+    global outputs_show
+    file = open("outputs/labels.txt", "wb")
     tf_rep = prepare(model_unet)
     for id in images_dict:
         id_images = images_dict[id]
-        print(f"Len for id {id} = ", len(id_images))
+        # print(f"Len for id {id} = ", len(id_images))
         if len(id_images) == 4:
             paths = f"outputs/persons/person-{id}"
             if not os.path.exists(paths):
@@ -127,13 +130,24 @@ def age_gender_pred(images_dict):
             # print('Age is: {}'.format(int(ans_age[0][0])))
             timing = str(time.time()).split(".")[0]
             cv2.imwrite(paths + f"/{timing}.jpg", np.array(id_images[0]).astype(np.uint8))
-            # if id not in outputs_dict:
-            file.write(f"Person - {id}, Gender - {gd}, Age - {int(ans_age[0][0])}\n")
+            outputs_ids_age[id].append(int(ans_age[0][0]))
+            outputs_ids_gd[id].append(gd)
             images_dict[id].pop(0)
+    for id in outputs_ids_age:
+        mini = np.percentile(outputs_ids_age[id], q=25)
+        maxi = np.percentile(outputs_ids_age[id], q=75)
+        median_age = np.median(outputs_ids_age[id])
+        mode_gd = statistics.mode(outputs_ids_gd[id])
+        outputs_show[id] = (median_age, mode_gd)
+        # print(outputs_show)
+        # print(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
+        file.write(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
     file.close()
+    
 
 
 def main(_argv):
+    global outputs_show
     # Initialising the Keras model to predict Demographics of image
     # model = tf.keras.models.load_model('model_data/New_32CL_5LR_43Epoc')
 
@@ -192,7 +206,7 @@ def main(_argv):
             break
 
         frame_num += 1
-        print('Frame #: ', frame_num)
+        # print('Frame #: ', frame_num)
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
         image_data = image_data[np.newaxis, ...].astype(np.float32)
@@ -311,12 +325,16 @@ def main(_argv):
             cv2.line(disp, midpoint, previous_midpoint, (0, 255, 0), 2)
             # cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(
             # track.track_id)))*17, int(bbox[1])), color, -1)
-            cv2.putText(disp, class_name + "-" + str(track.track_id), (int(bbox[0]), int(bbox[1] - 10)), 0, 0.75,
-                        (255, 255, 255), 2)
+            try:
+                cv2.putText(disp, class_name + "-" + str(track.track_id) + " " + str(outputs_show[track.track_id]), (int(bbox[0]), int(bbox[1] - 10)), 0, 0.5,
+                            (255, 255, 255), 2)
+                # print("done")
+            except:
+                pass
         age_gender_pred(cropped_images)  # result output
         # calculate frames per second of entire model
         fps = 1.0 / (time.time() - start_time)
-        print("FPS: %.2f" % fps)
+        # print("FPS: %.2f" % fps)
         result = np.asarray(disp)
         result = cv2.cvtColor(disp, cv2.COLOR_RGB2BGR)
         
