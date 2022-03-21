@@ -1,11 +1,8 @@
 #! /bin/bash
 
 ## creating virtual environment
-python -3 m venv base_Env
-source base_Env/bin/activate
-
 ## Installing requirements 
-pip install -r requirements-gpu.txt
+pip3 install -r requirements-gpu.txt
 
 ## downloading yolov4 darknet weights and save in data folder
 wget https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v3_optimal/yolov4.weights -P data/
@@ -21,7 +18,7 @@ unzip New_32CL_5LR_43Epoc.zip
 cd ..
 
 ## converting darknet weights to tensorflow model
-python save_model.py --model yolov4
+python3 save_model.py --model yolov4
 
 ## making model_data directory and installing our weights into it
 mkdir model_data
