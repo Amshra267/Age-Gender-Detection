@@ -1,6 +1,6 @@
 # BOSCH_A-G_INTERIIT
 
-Repository containing **TEAM-IITBHU** Solution for BOSCH Age and Gender Detection Problem Statement in InterIIT tech meet 10.0
+Repository containing Our Solution for BOSCH Age and Gender Detection Problem Statement in InterIIT TechMeet 10.0
 
 A snapshot for our approach is shown below : -
 

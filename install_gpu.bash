@@ -16,7 +16,6 @@ wget https://github.com/Amshra267/BOSCH_A-G_INTERIIT/releases/download/v1.0.0/ag
 wget https://github.com/Amshra267/BOSCH_A-G_INTERIIT/releases/download/v1.0.0/gender.h5 -p model_data/
 wget https://github.com/Amshra267/BOSCH_A-G_INTERIIT/releases/download/v1.0.0/unet.onnx -p model_data/
 wget https://github.com/Amshra267/BOSCH_A-G_INTERIIT/releases/download/v1.0.0/mars-small128.pb -p model_data/
-wget https://github.com/Amshra267/BOSCH_A-G_INTERIIT/releases/download/v1.0.0/New_32CL_5LR_43Epoc.zip -p model_data/
 cd model_data
 unzip New_32CL_5LR_43Epoc.zip
 cd ..
