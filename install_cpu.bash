@@ -26,6 +26,3 @@ python save_model.py --model yolov4
 
 ## making model_data directory and installing our weights into it
 mkdir model_data
-
-## making outputs folder
-mkdir -p outputs/video_results

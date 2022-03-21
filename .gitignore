@@ -1,7 +1,7 @@
-outputs/*
+outputs/persons
+outputs/labels.txt
 model_data/*
 data/yolov4.weights
 .vscode 
 base_Env
 checkpoints
-data/video/*
