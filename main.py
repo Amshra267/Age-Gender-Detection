@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
+from datetime import datetime
 # deep sort imports
 from deep_sort import preprocessing, nn_matching
 from deep_sort.detection import Detection
@@ -141,7 +142,7 @@ def age_gender_pred(images_dict):
         outputs_show[id] = (median_age, mode_gd)
         # print(outputs_show)
         # print(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
-        file.write(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
+        file.write(f"Timestamp - {datetime.now()}, Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
     file.close()
 
 

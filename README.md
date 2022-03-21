@@ -15,7 +15,7 @@ A snapshot for our approach is shown below : -
  ```bash
  git clone https://github.com/Amshra267/BOSCH_A-G_INTERIIT.git
  ## move to that directory
- mkdir BOSCH_A-G_INTERIIT
+ cd BOSCH_A-G_INTERIIT
  ```  
 
 **Step 2** - We had provided two configurations for installation
