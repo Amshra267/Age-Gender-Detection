@@ -1,0 +1,336 @@
+from copyreg import dispatch_table
+import os
+
+# comment out below line to enable tensorflow logging outputs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import time
+import tensorflow as tf
+
+physical_devices = tf.config.experimental.list_physical_devices('GPU')
+if len(physical_devices) > 0:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+from absl import app, flags
+from absl.flags import FLAGS
+import core.utils as utils
+from core.yolov4 import filter_boxes
+from tensorflow.python.saved_model import tag_constants
+from core.config import cfg
+from PIL import Image
+import cv2
+import numpy as np
+import time
+import matplotlib.pyplot as plt
+from copy import deepcopy
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
+# deep sort imports
+from deep_sort import preprocessing, nn_matching
+from deep_sort.detection import Detection
+from deep_sort.tracker import Tracker
+from tools import generate_detections as gdet
+import math
+from collections import Counter, defaultdict
+from collections import deque
+# import albumentations as A
+from PIL import Image as im
+import onnx
+from onnx_tf.backend import prepare
+from tensorflow import keras
+import tensorflow_hub as hub
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ["TFHUB_DOWNLOAD_PROGRESS"] = "True"
+
+# flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
+flags.DEFINE_string('weights', './checkpoints/yolov4-416',
+                    'path to weights file')
+flags.DEFINE_integer('size', 416, 'resize images to')
+flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
+flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
+flags.DEFINE_string('video', 'data/video/test_n.mp4', 'path to input video or set to 0 for webcam')
+flags.DEFINE_string('output', None, 'path to output video')
+flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
+flags.DEFINE_float('iou', 0.45, 'iou threshold')
+flags.DEFINE_float('score', 0.50, 'score threshold')
+
+## Loading models
+print("Started Initial Configurations --------------")
+SAVED_MODEL_PATH = "https://tfhub.dev/captain-pool/esrgan-tf2/1"
+model_esrgan = hub.load(SAVED_MODEL_PATH) ##ESRGAN MODEL
+model_unet = onnx.load('model_data/unet.onnx')  # segmentation model
+gender_model = keras.models.load_model("model_data/gender.h5")  # gender model path
+age_model = keras.models.load_model("model_data/age.h5")  # age model path
+
+print("Initial configuration finished --------------------")
+
+def preprocess_image(image):
+    """ Loads image from path and preprocesses to make it model ready
+      Args:
+        image_path: Path to the image file
+  """
+    # If PNG, remove the alpha channel. The model only supports
+    # images with 3 color channels.
+    hr_image = tf.convert_to_tensor(image, dtype=tf.float32)
+    if hr_image.shape[-1] == 4:
+        hr_image = hr_image[..., :-1]
+    hr_size = (tf.convert_to_tensor(hr_image.shape[:-1]) // 4) * 4
+    hr_image = tf.image.crop_to_bounding_box(hr_image, 0, 0, hr_size[0], hr_size[1])
+    hr_image = tf.cast(hr_image, tf.float32)
+    return tf.expand_dims(hr_image, 0)
+
+def age_gender_pred(images_dict):
+    file = open("outputs/labels.txt", "a")
+    tf_rep = prepare(model_unet)
+    device = 'cpu'  # depending on usage
+    for id in images_dict:
+        id_images = images_dict[id]
+        print(f"Len for id {id} = ", len(id_images))
+        if len(id_images)==10:
+            paths = f"outputs/persons/person-{id}"
+            if not os.path.exists(paths):
+                os.makedirs(paths)
+            lavg = []
+            for i in range(10):  # len(ti)):
+                lr_image = preprocess_image(id_images[i]) # Change path or image accordingly
+                hr_image = model_esrgan(lr_image)
+                hr_image = tf.squeeze(hr_image)
+                img = np.array(hr_image, dtype='float32')
+                img = cv2.resize(img, (128, 128)) / 255.0
+                img = cv2.merge((cv2.split(img)[2], cv2.split(img)[1], cv2.split(img)[0]))
+                img = np.transpose(img, (2, 0, 1))
+                img = img[None, ...]
+                op = tf_rep.run(np.asarray(img, dtype=np.float32))
+                res = op._0
+                res[res > 0.0] = 1
+                res[res <= 0.0] = 0
+                lavg.append(res)
+            mean = np.zeros(list(lavg[0].shape), dtype=np.float32)
+            ind = 0
+            for i in range(len(lavg)):
+                img = np.array(lavg[i], dtype=np.float32)
+                mean = np.add(mean, img)
+                ind = ind + 1
+            mean = mean / ind
+            print(mean.shape)
+            plt.imshow(mean[0, 0, :, :], cmap='gray')
+            mean = np.moveaxis(mean, -1, 1)
+            mean = np.moveaxis(mean, -1, 2)
+            print(mean.shape)
+            ans_gender = gender_model.predict(mean)
+            if ans_gender[0][0] <= 0.5:
+                print("Male")
+                gd = "Male"
+            else:
+                print("Female")
+                gd = "Female"
+            ans_age = age_model.predict(mean)
+            print('Age is: {}'.format(int(ans_age[0][0])))
+            timing = str(time.time()).split(".")[0]
+            cv2.imwrite(paths + f"/{timing}.jpg", np.array(id_images[0]).astype(np.uint8))
+            file.write(f"Person - {id}, Gender - {gd}, Age - {int(ans_age[0][0])}\n")
+            images_dict[id].pop(0)
+    file.close()
+
+
+def main(_argv):
+    # Initialising the Keras model to predict Demographics of image
+    # model = tf.keras.models.load_model('model_data/New_32CL_5LR_43Epoc')
+
+    # Definition of the parameters
+    max_cosine_distance = 0.4
+    nn_budget = None
+    nms_max_overlap = 1.0
+
+    # initialize deep sort
+    model_filename = 'model_data/mars-small128.pb'
+    encoder = gdet.create_box_encoder(model_filename, batch_size=1)
+    # calculate cosine distance metric
+    metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+    # initialize tracker
+    tracker = Tracker(metric)
+
+    # load configuration for object detector
+    config = ConfigProto()
+    config.gpu_options.allow_growth = True
+    session = InteractiveSession(config=config)
+    STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
+    input_size = 416
+    video_path = FLAGS.video
+
+    saved_model_loaded = tf.saved_model.load('./checkpoints/yolov4-416', tags=[tag_constants.SERVING])
+    infer = saved_model_loaded.signatures['serving_default']
+
+    # begin video capture
+    try:
+        vid = cv2.VideoCapture(int(video_path))
+    except:
+        vid = cv2.VideoCapture(video_path)
+
+    out = None
+
+    # get video ready to save locally if flag is set
+    if FLAGS.output:
+        # by default VideoCapture returns float instead of int
+        width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(vid.get(cv2.CAP_PROP_FPS))
+        codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
+        out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
+
+    frame_num = 0
+    memory = {}
+    cropped_images = defaultdict(list)
+
+    # while video is running
+    while True:
+        return_value, frame = vid.read()
+        if return_value:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        else:
+            print('Video has ended or failed, try a different video format!')
+            break
+
+        frame_num += 1
+        print('Frame #: ', frame_num)
+        image_data = cv2.resize(frame, (input_size, input_size))
+        image_data = image_data / 255.
+        image_data = image_data[np.newaxis, ...].astype(np.float32)
+        start_time = time.time()
+        batch_data = tf.constant(image_data)
+        pred_bbox = infer(batch_data)
+        for key, value in pred_bbox.items():
+            boxes = value[:, :, 0:4]
+            pred_conf = value[:, :, 4:]
+
+        boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
+            boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+            scores=tf.reshape(
+                pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
+            max_output_size_per_class=50,
+            max_total_size=50,
+            iou_threshold=0.45,
+            score_threshold=0.50
+        )
+
+        # convert data to numpy arrays and slice out unused elements
+        num_objects = valid_detections.numpy()[0]
+        bboxes = boxes.numpy()[0]
+        bboxes = bboxes[0:int(num_objects)]
+        scores = scores.numpy()[0]
+        scores = scores[0:int(num_objects)]
+        classes = classes.numpy()[0]
+        classes = classes[0:int(num_objects)]
+
+        # format bounding boxes from normalized ymin, xmin, ymax, xmax ---> xmin, ymin, width, height
+        original_h, original_w, _ = frame.shape
+        bboxes = utils.format_boxes(bboxes, original_h, original_w)
+
+        # store all predictions in one parameter for simplicity when calling functions
+        pred_bbox = [bboxes, scores, classes, num_objects]
+
+        # read in all class names from config
+        class_names = utils.read_class_names(cfg.YOLO.CLASSES)
+
+        # by default allow all classes in .names file
+        # allowed_classes = list(class_names.values())
+
+        # custom allowed classes (uncomment line below to customize tracker for only people)
+        allowed_classes = ['person']
+
+        # loop through objects and use class index to get class name, allow only classes in allowed_classes list
+        names = []
+        deleted_indx = []
+        for i in range(num_objects):
+            class_indx = int(classes[i])
+            class_name = class_names[class_indx]
+            if class_name not in allowed_classes:
+                deleted_indx.append(i)
+            else:
+                names.append(class_name)
+        # print(names)
+        names = np.array(names)
+        bboxes = np.delete(bboxes, deleted_indx, axis=0)
+        scores = np.delete(scores, deleted_indx, axis=0)
+
+        # encode yolo detections and feed to tracker
+        features = encoder(frame, bboxes)
+        detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in
+                      zip(bboxes, scores, names, features)]
+
+        # initialize color map
+        cmap = plt.get_cmap('tab20b')
+        colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
+
+        # run non-maxima supression
+        boxs = np.array([d.tlwh for d in detections])
+        scores = np.array([d.confidence for d in detections])
+        classes = np.array([d.class_name for d in detections])
+        indices = preprocessing.non_max_suppression(boxs, classes, nms_max_overlap, scores)
+        detections = [detections[i] for i in indices]
+
+        # Call the tracker
+        tracker.predict()
+        tracker.update(detections)
+
+        disp = deepcopy(frame)
+        
+        # update tracks
+        for track in tracker.tracks:
+            if not track.is_confirmed() or track.time_since_update > 1:
+                continue
+            bbox = track.to_tlbr()
+            class_name = track.get_class()
+            
+            # Tracking midpoints
+            midpoint = track.tlbr_midpoint(bbox)
+
+            if track.track_id not in memory:
+                cropped_images[track.track_id] = []
+                memory[track.track_id] = deque(maxlen=2)
+
+            memory[track.track_id].append(midpoint)
+            previous_midpoint = memory[track.track_id][0]
+            
+            #--------------- cropping image ---------
+            xmin, ymin, xmax, ymax = bbox
+            cropped_img = frame[int(ymin):int(ymax), int(xmin):int(xmax)]
+            cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
+            image_data_flat = cropped_img.shape[0] * cropped_img.shape[1]
+            if image_data_flat > 120 * 60:
+                cropped_img = cv2.resize(cropped_img, (60, 120), cv2.INTER_AREA)
+            else:
+                cropped_img = cv2.resize(cropped_img, (60, 120), cv2.INTER_LINEAR)
+            cropped_images[track.track_id].append(cropped_img)
+            
+            # draw bbox on screen
+            color = colors[int(track.track_id) % len(colors)]
+            color = [i * 255 for i in color]
+            cv2.imshow(f"tracked - {track.track_id}", frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])])
+            cv2.rectangle(disp, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
+            cv2.line(disp, midpoint, previous_midpoint, (0, 255, 0), 2)
+            # cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(
+            # track.track_id)))*17, int(bbox[1])), color, -1)
+            cv2.putText(disp, class_name + "-" + str(track.track_id), (int(bbox[0]), int(bbox[1] - 10)), 0, 0.75,
+                        (255, 255, 255), 2)
+            cv2.waitKey(1)
+        age_gender_pred(cropped_images) # result output
+        # calculate frames per second of entire model
+        fps = 1.0 / (time.time() - start_time)
+        print("FPS: %.2f" % fps)
+        result = np.asarray(disp)
+        result = cv2.cvtColor(disp, cv2.COLOR_RGB2BGR)
+
+        cv2.imshow("Output Video", result)
+
+        # if output flag is set, save video file
+        # if FLAGS.output:
+        #     out.write(result)
+        if cv2.waitKey(1) & 0xff == ord('q'): break
+    cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    try:
+        app.run(main)
+    except SystemExit:
+        pass
