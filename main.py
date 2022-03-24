@@ -96,7 +96,7 @@ def age_gender_pred(images_dict):
     tf_rep = prepare(model_unet)
     for id in images_dict:
         id_images = images_dict[id]
-        # print(f"Len for id {id} = ", len(id_images))
+        print(f"Len for id {id} = ", len(id_images))
         if len(id_images) == 4:
             paths = f"outputs/persons/person-{id}"
             if not os.path.exists(paths):
@@ -188,7 +188,7 @@ def main(_argv):
         # by default VideoCapture returns float instead of int
         width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = int(vid.get(cv2.CAP_PROP_FPS))
+        fps = 10
         codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
         out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
 
@@ -295,11 +295,11 @@ def main(_argv):
                 continue
             bbox = track.to_tlbr()
             class_name = track.get_class()
-
+            
             # Tracking midpoints
             midpoint = track.tlbr_midpoint(bbox)
 
-            if track.track_id not in memory:
+            if track.track_id not in memory:  
                 cropped_images[track.track_id] = []
                 memory[track.track_id] = deque(maxlen=2)
 
@@ -330,6 +330,7 @@ def main(_argv):
                             (255, 255, 255), 2)
                 # print("done")
             except:
+                # print(e)
                 pass
         age_gender_pred(cropped_images)  # result output
         # calculate frames per second of entire model
