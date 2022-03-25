@@ -1,4 +1,7 @@
 tensorflow-cpu
+scipy
+tensorflow-probability
+tensorflow-hub
 onnx
 onnx_tf
 opencv-python

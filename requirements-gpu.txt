@@ -1,6 +1,7 @@
 tensorflow-gpu
 scipy
-numpy
+tensorflow-probability
+tensorflow-hub
 onnx
 onnx_tf
 opencv-python
