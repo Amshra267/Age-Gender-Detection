@@ -38,6 +38,7 @@ import onnx
 from onnx_tf.backend import prepare
 from tensorflow import keras
 import tensorflow_hub as hub
+from scipy import stats as s
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ["TFHUB_DOWNLOAD_PROGRESS"] = "True"
@@ -139,7 +140,10 @@ def age_gender_pred(images_dict):
         mini = np.percentile(outputs_ids_age[id], q=25)
         maxi = np.percentile(outputs_ids_age[id], q=75)
         median_age = np.median(outputs_ids_age[id])
-        mode_gd = statistics.mode(outputs_ids_gd[id])
+        try:
+            mode_gd = statistics.mode(outputs_ids_gd[id])
+        except:
+            mode_gd = s.mode(outputs_ids_gd[id])[0]
         outputs_show[id] = (median_age, mode_gd)
         # print(outputs_show)
         # print(f"Person - {id}, Gender - {mode_gd}, Age Range- ({mini}-{maxi}), Age - {median_age}\n")
