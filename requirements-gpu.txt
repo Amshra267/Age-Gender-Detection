@@ -1,4 +1,6 @@
 tensorflow-gpu
+scipy
+numpy
 onnx
 onnx_tf
 opencv-python
