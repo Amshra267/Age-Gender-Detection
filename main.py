@@ -65,6 +65,8 @@ age_model = keras.models.load_model("model_data/age.h5")  # age model path
 
 print("Initial configuration finished --------------------")
 
+print("Outputs will be available in outputs folder")
+
 
 def preprocess_image(image_batch):
     """ Loads images as batches and preprocesses to make it model ready
@@ -96,7 +98,6 @@ def age_gender_pred(images_dict):
     tf_rep = prepare(model_unet)
     for id in images_dict:
         id_images = images_dict[id]
-        print(f"Len for id {id} = ", len(id_images))
         if len(id_images) == 4:
             paths = f"outputs/persons/person-{id}"
             if not os.path.exists(paths):
