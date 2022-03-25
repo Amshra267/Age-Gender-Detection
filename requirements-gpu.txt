@@ -1,7 +1,7 @@
 tensorflow-gpu
 onnx
 onnx_tf
-opencv-python==4.1.1.26
+opencv-python
 lxml
 tqdm
 absl-py
